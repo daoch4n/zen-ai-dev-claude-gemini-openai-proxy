@@ -57,11 +57,23 @@ class Constants:
 class Config:
     def __init__(self):
         self.gemini_api_key = os.environ.get("GEMINI_API_KEY")
-        if not self.gemini_api_key:
-            raise ValueError("GEMINI_API_KEY not found in environment variables")
+        self.openai_api_key = os.environ.get("OPENAI_API_KEY")
+        self.openai_api_base = os.environ.get("OPENAI_API_BASE")
+
+        # Determine the provider
+        if self.openai_api_key and self.openai_api_base:
+            self.provider = "openai"
+            print("✅ OpenAI provider configured.")
+        elif self.gemini_api_key:
+            self.provider = "gemini"
+            print("✅ Gemini provider configured.")
+        else:
+            raise ValueError("No provider configured. Please set either GEMINI_API_KEY or both OPENAI_API_KEY and OPENAI_API_BASE.")
+
+        # Model names can now be generic
+        self.big_model = os.environ.get("BIG_MODEL", "gemini-1.5-pro-latest" if self.provider == "gemini" else "gpt-4o")
+        self.small_model = os.environ.get("SMALL_MODEL", "gemini-1.5-flash-latest" if self.provider == "gemini" else "gpt-4o-mini")
         
-        self.big_model = os.environ.get("BIG_MODEL", "gemini-1.5-pro-latest")
-        self.small_model = os.environ.get("SMALL_MODEL", "gemini-1.5-flash-latest")
         self.host = os.environ.get("HOST", "0.0.0.0")
         self.port = int(os.environ.get("PORT", "8082"))
         self.log_level = os.environ.get("LOG_LEVEL", "WARNING")
@@ -77,13 +89,18 @@ class Config:
         self.emergency_disable_streaming = os.environ.get("EMERGENCY_DISABLE_STREAMING", "false").lower() == "true"
         
     def validate_api_key(self):
-        """Basic API key validation"""
-        if not self.gemini_api_key:
-            return False
-        # Basic format check for Google API keys
-        if not (self.gemini_api_key.startswith('AIza') and len(self.gemini_api_key) == 39):
-            return False
-        return True
+        """Basic API key validation based on the active provider."""
+        if self.provider == "gemini":
+            if not self.gemini_api_key:
+                return False
+            # Basic format check for Google API keys
+            if not (self.gemini_api_key.startswith('AIza') and len(self.gemini_api_key) == 39):
+                return False
+            return True
+        elif self.provider == "openai":
+            # For OpenAI, just check if the key is present
+            return bool(self.openai_api_key)
+        return False
 
 try:
     config = Config()
@@ -115,26 +132,41 @@ class ModelManager:
         self._add_env_models()
     
     def _add_env_models(self):
-        for model in [self.config.big_model, self.config.small_model]:
-            if model.startswith("gemini") and model not in self._gemini_models:
-                self._gemini_models.add(model)
+        """Adds models specified in environment variables to the known models."""
+        env_big_model = os.environ.get("BIG_MODEL")
+        env_small_model = os.environ.get("SMALL_MODEL")
+        if env_big_model:
+            # Add to Gemini models if Gemini is the provider, otherwise it's an OpenAI model
+            if self.config.provider == "gemini":
+                self._gemini_models.add(env_big_model)
+        if env_small_model:
+            if self.config.provider == "gemini":
+                self._gemini_models.add(env_small_model)
     
     @property
     def gemini_models(self) -> List[str]:
         return sorted(list(self._gemini_models))
     
     def validate_and_map_model(self, original_model: str) -> tuple[str, bool]:
-        clean_model = self._clean_model_name(original_model)
-        mapped_model = self._map_model_alias(clean_model)
+        # Step 1: Clean the model name by removing any existing provider prefixes
+        cleaned_model = self._clean_model_name(original_model)
         
-        if mapped_model != clean_model:
-            return f"gemini/{mapped_model}", True
-        elif clean_model in self._gemini_models:
-            return f"gemini/{clean_model}", True
-        elif not original_model.startswith('gemini/'):
-            return f"gemini/{original_model}", False
-        else:
-            return original_model, False
+        # Step 2: Map aliases (e.g., 'haiku' to 'gemini-1.5-flash-latest')
+        aliased_model = self._map_model_alias(cleaned_model)
+        
+        # Step 3: Apply the correct provider prefix based on configuration
+        final_litellm_model = aliased_model
+        if self.config.provider == "openai":
+            if not aliased_model.startswith("openai/"):
+                final_litellm_model = f"openai/{aliased_model}"
+        elif self.config.provider == "gemini":
+            if not aliased_model.startswith("gemini/"):
+                final_litellm_model = f"gemini/{aliased_model}"
+        
+        # Step 4: Determine if any transformation (aliasing or prefixing) occurred
+        was_transformed = (final_litellm_model != original_model)
+
+        return final_litellm_model, was_transformed
     
     def _clean_model_name(self, model: str) -> str:
         if model.startswith('gemini/'):
@@ -1047,7 +1079,11 @@ async def create_message(request: MessagesRequest, raw_request: Request):
 
         # Convert request
         litellm_request = convert_anthropic_to_litellm(request)
-        litellm_request["api_key"] = config.gemini_api_key
+        if config.provider == "openai":
+            litellm_request["api_key"] = config.openai_api_key
+            litellm_request["api_base"] = config.openai_api_base
+        else: # Default to gemini
+            litellm_request["api_key"] = config.gemini_api_key
         
         # Log request details
         num_tools = len(request.tools) if request.tools else 0
@@ -1335,9 +1371,14 @@ def validate_startup():
     print("🔍 Validating startup configuration...")
     
     # Check API key
-    if not config.gemini_api_key:
-        print("🔴 FATAL: GEMINI_API_KEY is not set")
-        return False
+    if config.provider == "gemini":
+        if not config.gemini_api_key:
+            print("🔴 FATAL: GEMINI_API_KEY is not set")
+            return False
+    elif config.provider == "openai":
+        if not config.openai_api_key:
+            print("🔴 FATAL: OPENAI_API_KEY is not set")
+            return False
     
     if not config.validate_api_key():
         print("⚠️ WARNING: API key format validation failed")

@@ -60,26 +60,35 @@ This server acts as a bridge, enabling you to use **Claude Code** with Google's 
     ```bash
     cp .env.example .env
     ```
-    Edit `.env` and add your Gemini API key. You can also customize model mappings and server settings:
+    Edit `.env` to configure your chosen API provider and customize settings.
     ```dotenv
+    # --- Choose ONE Provider ---
+
+    # Option 1: Google Gemini (Default)
     # Required: Your Google AI Studio API key
     GEMINI_API_KEY="your-google-ai-studio-key"
 
-    # Optional: Model mappings for Claude Code aliases
-    BIG_MODEL="gemini-1.5-pro-latest"    # For 'sonnet' or 'opus' requests
-    SMALL_MODEL="gemini-1.5-flash-latest" # For 'haiku' requests
-    
-    # Optional: Server settings
+    # Option 2: OpenAI-Compatible Endpoint
+    # Required: Your OpenAI-compatible API key and Base URL
+    # OPENAI_API_KEY="your-openai-or-custom-endpoint-key"
+    # OPENAI_API_BASE="https://your-custom-endpoint.com/v1"
+
+    # --- Model Mappings ---
+    # These will be used for the selected provider above.
+    BIG_MODEL="gemini-1.5-pro-latest"    # For 'sonnet'/'opus'.
+    SMALL_MODEL="gemini-1.5-flash-latest" # For 'haiku'.
+
+    # --- Optional Settings ---
     HOST="0.0.0.0"
     PORT="8082"
     LOG_LEVEL="WARNING"  # DEBUG, INFO, WARNING, ERROR, CRITICAL
-    
+
     # Optional: Performance and reliability settings
     MAX_TOKENS_LIMIT="8192"           # Max tokens for Gemini responses
     REQUEST_TIMEOUT="90"              # Request timeout in seconds
     MAX_RETRIES="2"                   # LiteLLM retries to Gemini
     MAX_STREAMING_RETRIES="12"         # Streaming-specific retry attempts
-    
+
     # Optional: Streaming control (use if experiencing issues)
     FORCE_DISABLE_STREAMING="false"     # Disable streaming globally
     EMERGENCY_DISABLE_STREAMING="false" # Emergency streaming disable
