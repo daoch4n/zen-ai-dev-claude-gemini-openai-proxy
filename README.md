@@ -1,3 +1,11 @@
+## Streaming seems more stable here than on [claude-code-proxy](https://github.com/1rgs/claude-code-proxy) so I've added OpenAI option here as well to use Gemini from other providers  🚀
+
+### From my testing:
+ - Worked with  OpenRouter / Chutes / Google OpenAI API endpoints, although it might need extensive CLAUDE.md modifications to properly support models other than Gemini. 
+ - Google [OpenAI endpoint](https://generativelanguage.googleapis.com/v1beta/openai/) with Gemini Flash 2.5 worked best! So if other providers don't work, it's their API implementation compatibility issues.
+ - From non-Gemini models DeepSeek R1 was ok, although it couldn't figure out how to pass proper schema to Claude Code editing tools.
+
+
 # Gemini for Claude Code: An Anthropic-Compatible Proxy
 
 This server acts as a bridge, enabling you to use **Claude Code** with Google's powerful **Gemini models**. It translates API requests and responses between the Anthropic format (used by Claude Code) and the Gemini format (via LiteLLM), allowing seamless integration.
